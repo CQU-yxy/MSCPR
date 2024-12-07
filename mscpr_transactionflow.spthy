@@ -1,0 +1,116 @@
+theory prmsc
+begin
+
+builtins: diffie-hellman, symmetric-encryption, signing
+
+functions: exp_g/2, range_proof/2, valid_range_proof/3, add/2, neg/1,true/0,gen_position/2,verify_position/2
+
+// --------------------------------------------------------------------------------------------------------------------------
+// Function Definitions
+
+equations:
+    valid_range_proof(exp_g(~v, ~g), exp_g(~b, ~g), range_proof(v, b)) = true()
+equations:
+    verify_position(exp_g(~b, ~g),pp)= true()
+
+
+
+predicates: 
+    LessOrEqual(x, y) <=> Ex z. add(x, z) = y
+
+
+// --------------------------------------------------------------------------------------------------------------------------
+// Initialization rules
+
+rule Init_User_Regulator:
+    [Fr(~usrID), Fr(~regID), Fr(~g), Fr(~b)]
+    --[
+        InitUser(~usrID, ~g, ~b),
+        InitRegulator(~regID)
+    ]->
+    [!UserInitState(~usrID, ~g, ~b), !RegulatorState(~regID, 'INIT')]
+
+rule UserTransfer:
+    let
+        gV = exp_g(~v, ~g)
+        gB = exp_g(~b, ~g)
+        rb = add(~b, neg(~v))
+    in
+    [!UserInitState(~usrID, ~g, ~b), Fr(~v)]
+    --[
+        LessOrEqual(~v, rb), // 转账金额不能超过当前余额
+        UserTransfer(~usrID, ~v, gV, gB)
+    ]->
+    [!UserTransferState(~usrID, ~g, ~b, ~v, gV, gB, rb,'proof'), Out(<gV, gB>)]
+
+rule UserGeneratesProof:
+    let
+        rp = range_proof(~v, ~b)
+        pp = gen_position(~usrID,~b)
+    in
+    [!UserTransferState(~usrID, ~g, ~b, ~v, ~gV, ~gB, ~rb,'proof')]
+    --[
+        UserGeneratesProof(~usrID, ~v, ~b, rp,pp)
+    ]->
+    [!UserTransferState(~usrID, ~g, ~b, ~v, ~gV, ~gB, ~rb, <rp,pp>), Out(<rp,pp>)]
+
+
+rule RegulatorVerifiesProof:
+    let
+    valid = valid_range_proof(~gV, ~gB, ~rp)
+    valid2 = verify_position(~gB, ~pp)
+    in
+    [!RegulatorState(~regID, 'INIT'), In(~gV), In(~gB), In(~rp),In(~pp)]
+    --[
+        RegulatorVerifiesProof(~regID, ~gV, ~gB, ~rp),
+        IsTrue(valid),
+        IsTrue(valid2)
+    ]->
+    [!RegulatorState(~regID, 'RANGE_PROOF_VERIFIED'), Out('ACK')]
+
+rule UserResetState:
+    [!UserTransferState(~usrID, ~g, ~b, ~v, ~gV, ~gB, ~rb, <rp,pp>), In('ACK')]
+    --[
+        UserResetsState(~usrID, ~rb) // 用户执行状态重置的动作
+    ]->
+    [!UserInitState(~usrID, ~g, ~rb)] // 用户状态更新为初始状态，余额变为剩余余额 ~rb
+
+
+// restriction equality:
+//     " All x y #i. Equality(x,y)@i ==> x = y "
+
+restriction TrueIsTrue:
+    "All x #i. IsTrue(x)@i ==> x=true()"
+
+// --------------------------------------------------------------------------------------------------------------------------
+// Security Lemmas
+
+// // Validity lemma for range proof
+// lemma range_proof_validity:
+//     "All usrID b v rp pp #i. (UserGeneratesProof(usrID, v, b, rp,pp) @ #i ==> true)"
+
+lemma Authentic_User_Transfer:
+    "All regID gV gB rp #i.
+        RegulatorVerifiesProof(regID, gV, gB, rp) @ #i
+        ==> (Ex usrID v #j.
+                UserTransfer(usrID, v, gV, gB) @ #j & 
+                j < i)"
+
+// Ensure the secrecy of v
+lemma v_secret:
+    "All usrID v gV gB #i. (UserTransfer(usrID, v, gV, gB) @ #i ==> not(Ex #j. K(v) @ #j))"
+
+// Ensure the secrecy of b
+lemma b_secret:
+    "All usrID b v rp pp #i. (UserGeneratesProof(usrID, v, b, rp,pp) @ #i ==> not(Ex #j. K(b) @ #j))"
+
+// Executability and termination of the protocol
+lemma Executable_and_Terminable:
+    exists-trace
+    "Ex usrID regID g b v gV gB rp pp #i #j #k #l. (InitUser(usrID, g, b) @ i & 
+                                                  UserTransfer(usrID, v, gV, gB) @ j & 
+                                                  UserGeneratesProof(usrID, v, b, rp,pp) @ k & 
+                                                  RegulatorVerifiesProof(regID, gV, gB, rp) @ l & 
+                                                  i < j & j < k & k < l)"
+
+end
