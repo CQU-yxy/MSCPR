@@ -89,7 +89,7 @@ restriction TrueIsTrue:
 // lemma range_proof_validity:
 //     "All usrID b v rp pp #i. (UserGeneratesProof(usrID, v, b, rp,pp) @ #i ==> true)"
 
-lemma Authentic_User_Transfer:
+lemma Authentic_User:
     "All regID gV gB rp #i.
         RegulatorVerifiesProof(regID, gV, gB, rp) @ #i
         ==> (Ex usrID v #j.
@@ -97,11 +97,11 @@ lemma Authentic_User_Transfer:
                 j < i)"
 
 // Ensure the secrecy of v
-lemma v_secret:
+lemma Value_secret:
     "All usrID v gV gB #i. (UserTransfer(usrID, v, gV, gB) @ #i ==> not(Ex #j. K(v) @ #j))"
 
 // Ensure the secrecy of b
-lemma b_secret:
+lemma Balance_secret:
     "All usrID b v rp pp #i. (UserGeneratesProof(usrID, v, b, rp,pp) @ #i ==> not(Ex #j. K(b) @ #j))"
 
 // Executability and termination of the protocol
